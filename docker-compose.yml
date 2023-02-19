@@ -1,0 +1,85 @@
+version: "2.0"
+
+x-logging: &loki-logging
+  driver: json-file
+  options:
+    tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+
+services:
+
+  app:
+    build: .
+    ports:
+      - '8000:8000'
+    depends_on:
+      - postgres
+      - redis
+    mem_limit: 250m
+    logging: *loki-logging
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_PASSWORD=password
+    ports:
+      - '5432:5432'
+    mem_limit: 150m
+    logging: *loki-logging
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    depends_on:
+      - postgres
+    mem_limit: 25m
+    logging: *loki-logging
+
+
+  # DevOps
+  loki:
+    image: grafana/loki:2.7.0
+    ports:
+      - '3100:3100'
+    volumes:
+      - ./env/config/loki/loki-config.yaml:/mnt/config/loki-config.yaml
+    command: -config.file=/mnt/config/loki-config.yaml
+    logging: *loki-logging
+    mem_limit: 200m
+
+  promtail:
+    image: grafana/promtail:2.7.0
+    volumes:
+      - ./env/config/loki/promtail-config.yaml:/mnt/config/promtail-config.yaml
+      - /var/lib/docker/containers:/host/containers
+    command: -config.file /mnt/config/promtail-config.yaml
+    logging: *loki-logging
+    mem_limit: 100m
+
+  grafana:
+    image: grafana/grafana:9.0.0
+    ports:
+      - '3000:3000'
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SERVER_DOMAIN=vm4200374.25ssd.had.wf
+      - GF_SERVER_ROOT_URL=https://vm4200374.25ssd.had.wf/grafana
+      - GF_SECURITY_ADMIN_PASSWORD=password
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./env/config/grafana/provisioning/:/etc/grafana/provisioning/
+    logging: *loki-logging
+    mem_limit: 200m
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command: --config.file=/etc/prometheus/prometheus.yml
+
+volumes:
+  grafana-data:

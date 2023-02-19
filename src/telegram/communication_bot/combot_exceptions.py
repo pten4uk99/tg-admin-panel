@@ -1,0 +1,2 @@
+class CombotException(Exception):
+    pass
